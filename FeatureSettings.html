@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <style>
+    body { font: 14px Arial, sans-serif; color: #202124; padding: 12px; }
+    h2 { font-size: 18px; margin: 0 0 8px; }
+    p { color: #5f6368; line-height: 1.4; }
+    .auth, .feature { margin: 12px 0; }
+    .feature { display: flex; gap: 10px; align-items: flex-start; }
+    .feature label { cursor: pointer; }
+    input[type=password] { box-sizing: border-box; padding: 8px; width: 100%; }
+    button { padding: 8px 12px; cursor: pointer; }
+    #status { margin-top: 10px; min-height: 20px; }
+    .error { color: #b3261e; }
+    .success { color: #137333; }
+    #controls { display: none; }
+  </style>
+</head>
+<body>
+  <h2>Feature settings</h2>
+  <p>Turn optional LMS modules on or off. Changes are saved to the Settings sheet immediately when you press Save.</p>
+  <div class="auth" id="authBox">
+    <label for="code">Admin access code</label>
+    <input id="code" type="password" autocomplete="current-password" placeholder="Enter admin code">
+    <button id="loadButton" onclick="loadSettings()">Load settings</button>
+  </div>
+  <div id="controls">
+    <div id="featureList"></div>
+    <button id="saveButton" onclick="saveSettings()">Save changes</button>
+  </div>
+  <div id="status" role="status"></div>
+  <script>
+    let featureConfig = [];
+    function setStatus(message, isError) {
+      const status = document.getElementById('status');
+      status.textContent = message;
+      status.className = isError ? 'error' : 'success';
+    }
+    function loadSettings() {
+      const code = document.getElementById('code').value.trim();
+      if (!code) return setStatus('Enter the admin access code.', true);
+      document.getElementById('loadButton').disabled = true;
+      google.script.run.withSuccessHandler(features => {
+        document.getElementById('loadButton').disabled = false;
+        featureConfig = features;
+        const list = document.getElementById('featureList');
+        list.replaceChildren();
+        features.forEach(feature => {
+          const row = document.createElement('div'); row.className = 'feature';
+          const input = document.createElement('input'); input.type = 'checkbox'; input.id = feature.key; input.checked = feature.enabled;
+          const label = document.createElement('label'); label.htmlFor = feature.key; label.textContent = feature.label;
+          row.append(input, label); list.appendChild(row);
+        });
+        document.getElementById('controls').style.display = 'block';
+        setStatus('Settings loaded.');
+      }).withFailureHandler(error => {
+        document.getElementById('loadButton').disabled = false;
+        setStatus(error && error.message ? error.message : 'Unable to load settings.', true);
+      }).getFeatureSettings(code);
+    }
+    function saveSettings() {
+      const updates = {};
+      featureConfig.forEach(feature => updates[feature.key] = document.getElementById(feature.key).checked);
+      document.getElementById('saveButton').disabled = true;
+      google.script.run.withSuccessHandler(() => {
+        document.getElementById('saveButton').disabled = false;
+        setStatus('Saved to the Settings sheet. Refresh the web app to apply available module controls.');
+      }).withFailureHandler(error => {
+        document.getElementById('saveButton').disabled = false;
+        setStatus(error && error.message ? error.message : 'Unable to save settings.', true);
+      }).saveFeatureSettings(document.getElementById('code').value.trim(), updates);
+    }
+  </script>
+</body>
+</html>
