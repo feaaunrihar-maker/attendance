@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="hi" data-bs-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>FEA Attendance &amp; Retention</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <style>
+    body { background:#0e1117; color:#e6edf3; font-family:system-ui,-apple-system,sans-serif; }
+    .card,.modal-content { background:#161b22; border:1px solid #30363d; border-radius:8px; }
+    .chip,.student-pill { cursor:pointer; user-select:none; transition:.2s; }
+    .chip.active { background:#238636!important; color:#fff!important; }
+    .student-pill.absent { background:#da3633!important; color:#fff!important; border-color:#f85149!important; }
+    .nav-tabs .nav-link { color:#8b949e; border:0; font-weight:500; cursor:pointer; }
+    .nav-tabs .nav-link.active { background:transparent; color:#58a6ff; border-bottom:2px solid #58a6ff; }
+    .tab-panel[hidden] { display:none!important; }
+  </style>
+</head>
+<body class="p-2 p-md-3">
+  <div id="loginScreen" class="d-flex align-items-center justify-content-center" style="min-height:80vh">
+    <div class="card p-4" style="max-width:400px;width:100%">
+      <div class="text-center mb-3"><i class="bi bi-shield-lock-fill text-primary display-5"></i><h4 class="mt-2 fw-bold">FEA Portal Login</h4><p class="text-secondary small">एक्सेस कोड दर्ज करें (Admin, Staff या View-only)</p></div>
+      <input type="password" id="accessCodeInput" class="form-control text-center fs-5 mb-3" placeholder="FEA-XXX-0000" autocomplete="current-password">
+      <button id="loginButton" class="btn btn-primary w-100 fw-bold">लॉगिन करें</button>
+      <div id="loginError" class="text-danger small text-center mt-2" hidden></div>
+    </div>
+  </div>
+
+  <main id="mainApp" hidden>
+    <header class="d-flex flex-wrap justify-content-between align-items-center mb-3 pb-2 border-bottom border-secondary">
+      <div><h5 class="m-0 fw-bold"><i class="bi bi-mortarboard-fill text-primary me-2"></i>FEA Attendance &amp; Retention</h5><small class="text-secondary" id="userRoleBadge"></small></div>
+      <div class="d-flex gap-2 align-items-center"><span class="badge bg-dark border border-secondary" id="todayLabel"></span><button class="btn btn-outline-danger btn-sm" id="logoutButton" aria-label="Logout"><i class="bi bi-box-arrow-right"></i></button></div>
+    </header>
+    <div id="appError" class="alert alert-danger py-2" role="alert" hidden></div>
+    <ul class="nav nav-tabs mb-3" id="appTabs">
+      <li class="nav-item"><button class="nav-link active" data-tab="attTab"><i class="bi bi-check2-square me-1"></i> Attendance</button></li>
+      <li class="nav-item"><button class="nav-link" data-tab="remindersTab"><i class="bi bi-bell me-1"></i> Reminders (2+ Days)</button></li>
+      <li class="nav-item"><button class="nav-link" data-tab="reportTab"><i class="bi bi-file-text me-1"></i> Report (L-)</button></li>
+      <li class="nav-item"><button class="nav-link" data-tab="insightsTab"><i class="bi bi-graph-up me-1"></i> Insights</button></li>
+      <li class="nav-item" id="adminSettingsNav" hidden><button class="nav-link" data-tab="settingsTab"><i class="bi bi-gear me-1"></i> Settings &amp; Backup</button></li>
+    </ul>
+
+    <section id="attTab" class="tab-panel">
+      <div class="card p-3 mb-3"><div class="row g-2 align-items-end">
+        <div class="col-md-3"><label class="small text-secondary" for="attDate">तारीख चुनें</label><input type="date" id="attDate" class="form-control form-control-sm"></div>
+        <div class="col-md-3"><label class="small text-secondary" for="attSession">सेशन चुनें</label><select id="attSession" class="form-select form-select-sm"><option value="S1">Session 1 (S1)</option><option value="S2">Session 2 (S2)</option><option value="S3">Session 3 (S3)</option></select></div>
+        <div class="col-md-6 text-md-end"><button id="saveAttendanceButton" class="btn btn-success btn-sm px-3"><i class="bi bi-save me-1"></i> Save Attendance</button></div>
+      </div></div>
+      <div class="card p-3"><div class="small text-secondary mb-2">केवल अनुपस्थित छात्रों पर टैप करें (वे लाल हो जाएंगे):</div><div class="d-flex flex-wrap gap-2" id="attendancePillsBox"></div></div>
+    </section>
+
+    <section id="remindersTab" class="tab-panel" hidden>
+      <div class="card p-3"><h6 class="fw-bold text-danger mb-3"><i class="bi bi-exclamation-triangle-fill me-1"></i> लगातार अनुपस्थित छात्र (2 या अधिक क्लास)</h6>
+        <div class="table-responsive"><table class="table table-dark table-hover align-middle mb-0"><thead><tr class="text-secondary small"><th>नाम व ID</th><th>सेशन</th><th>फोन</th><th>लगातार अनुपस्थिति</th><th>वापसी तिथि</th><th>एक्शन</th></tr></thead><tbody id="remindersTableBody"></tbody></table></div>
+      </div>
+    </section>
+
+    <section id="reportTab" class="tab-panel" hidden>
+      <div class="card p-3 mb-3"><h6 class="fw-bold mb-3"><i class="bi bi-journal-text me-1"></i> लेसन नंबर (L-) दर्ज करें</h6><div class="row g-3">
+        <div class="col-md-4"><label class="small text-secondary" for="lS1">S1 Lesson</label><input type="text" id="lS1" class="form-control form-control-sm" placeholder="उदा. L-124"></div>
+        <div class="col-md-4"><label class="small text-secondary" for="lS2">S2 Lesson</label><input type="text" id="lS2" class="form-control form-control-sm" placeholder="उदा. L-124"></div>
+        <div class="col-md-4"><label class="small text-secondary" for="lS3">S3 Lesson</label><input type="text" id="lS3" class="form-control form-control-sm" placeholder="उदा. L-124"></div>
+      </div><button id="generateReportButton" class="btn btn-primary btn-sm mt-3"><i class="bi bi-file-earmark-text me-1"></i> रिपोर्ट तैयार करें</button></div>
+      <div class="card p-3" id="reportResultBox" hidden><div class="d-flex justify-content-between align-items-center mb-2"><span class="small fw-bold">WhatsApp तैयार फॉर्मेट:</span><button id="copyReportButton" class="btn btn-success btn-sm"><i class="bi bi-clipboard-check me-1"></i> Copy Report</button></div><textarea id="reportTextPreview" class="form-control bg-black text-light font-monospace small" rows="10" readonly></textarea></div>
+    </section>
+
+    <section id="insightsTab" class="tab-panel" hidden>
+      <div class="card p-3 mb-3"><h6 class="fw-bold"><i class="bi bi-bar-chart-line me-1"></i> ब्रांच ट्रेंड्स</h6><div class="row g-2 text-center mt-2">
+        <div class="col-4"><div class="p-2 border border-secondary rounded bg-black"><div class="small text-secondary">कुल एनरोल्ड</div><h4 class="m-0 text-primary" id="insightTotalStudents">0</h4></div></div>
+        <div class="col-4"><div class="p-2 border border-secondary rounded bg-black"><div class="small text-secondary">कुल आयोजित क्लासेज</div><h4 class="m-0 text-info" id="insightTotalClasses">0</h4></div></div>
+        <div class="col-4"><div class="p-2 border border-secondary rounded bg-black"><div class="small text-secondary">औसत उपस्थिति</div><h4 class="m-0 text-success" id="insightAvgRate">0%</h4></div></div>
+      </div></div>
+      <div class="card p-3" id="openingBalanceCard" hidden><h6 class="fw-bold mb-2"><i class="bi bi-calculator me-1"></i> Opening Balance (ऐतिहासिक डेटा)</h6><p class="text-secondary small">पुरानी क्लासों की संख्या और छात्र-वार ऐतिहासिक अनुपस्थिति दर्ज करें।</p>
+        <div class="row g-2 align-items-end mb-3"><div class="col-md-4"><label class="small text-secondary" for="histClasses">कुल पिछली क्लासेस</label><input type="number" min="0" step="1" id="histClasses" class="form-control form-control-sm"></div><div class="col-md-4"><button id="saveBalanceButton" class="btn btn-outline-primary btn-sm">सेव ओपनिंग बैलेंस</button></div></div>
+        <div class="table-responsive"><table class="table table-dark table-sm align-middle"><thead><tr><th>छात्र</th><th style="width:180px">ऐतिहासिक अनुपस्थिति</th></tr></thead><tbody id="historicalAbsencesBody"></tbody></table></div>
+      </div>
+    </section>
+
+    <section id="settingsTab" class="tab-panel" hidden><div class="card p-3"><h6 class="fw-bold"><i class="bi bi-cloud-arrow-up me-1"></i> Google Drive स्नैपशॉट बैकअप</h6><p class="text-secondary small">यह Google Drive में टाइमस्टैम्प वाला स्प्रेडशीट कॉपी बनाएगा।</p><button id="backupButton" class="btn btn-outline-warning btn-sm"><i class="bi bi-copy me-1"></i> Make a backup copy</button><div id="backupMsg" class="mt-2 small"></div></div></section>
+  </main>
+
+  <div class="modal fade" id="callModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-lg"><div class="modal-content bg-dark border-secondary">
+    <div class="modal-header border-secondary"><h5 class="modal-title"><i class="bi bi-telephone-outbound text-warning me-2"></i>कॉल फॉलो-अप लॉग</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button></div>
+    <div class="modal-body"><input type="hidden" id="callStuId"><div class="d-flex justify-content-between gap-3 mb-3 border-bottom border-secondary pb-2"><div><h6 class="m-0 fw-bold" id="callStuName"></h6><small class="text-secondary" id="callStuPhone"></small></div><div class="col-md-4"><label class="small text-secondary" for="callExpectedReturn">Expected Return Date</label><input type="date" id="callExpectedReturn" class="form-control form-control-sm"></div></div>
+      <div class="mb-2"><label class="small text-secondary d-block">1. Reason (कारण):</label><div class="d-flex flex-wrap gap-1" id="chipsReason"><button type="button" class="badge bg-secondary chip border-0">तबीयत खराब</button><button type="button" class="badge bg-secondary chip border-0">पारिवारिक कार्य / शादी</button><button type="button" class="badge bg-secondary chip border-0">कॉलेज / परीक्षा</button><button type="button" class="badge bg-secondary chip border-0">कॉल नहीं उठा</button><button type="button" class="badge bg-secondary chip border-0">अन्य</button></div></div>
+      <div class="mb-2"><label class="small text-secondary d-block">2. Action (कार्रवाई):</label><div class="d-flex flex-wrap gap-1" id="chipsAction"><button type="button" class="badge bg-secondary chip border-0">छात्र से बात हुई</button><button type="button" class="badge bg-secondary chip border-0">अभिभावक से बात हुई</button><button type="button" class="badge bg-secondary chip border-0">WhatsApp संदेश भेजा</button></div></div>
+      <div class="mb-2"><label class="small text-secondary d-block">3. Outcome (परिणाम):</label><div class="d-flex flex-wrap gap-1" id="chipsOutcome"><button type="button" class="badge bg-secondary chip border-0">कल उपस्थित होगा</button><button type="button" class="badge bg-secondary chip border-0">निश्चित तिथि पर आएगा</button><button type="button" class="badge bg-secondary chip border-0">सत्र बदलने का अनुरोध</button></div></div>
+      <div class="mb-2"><label class="small text-secondary d-block">4. Next Follow-up (अगला संपर्क):</label><div class="d-flex flex-wrap gap-1" id="chipsFollowUp"><button type="button" class="badge bg-secondary chip border-0">कल</button><button type="button" class="badge bg-secondary chip border-0">वापसी की तारीख पर</button><button type="button" class="badge bg-secondary chip border-0">अगले सप्ताह</button><button type="button" class="badge bg-secondary chip border-0">कोई फॉलो-अप नहीं</button></div></div>
+      <div class="mb-2 mt-3"><label class="small text-secondary d-block fw-bold">5. कार्ड स्टाइल चुनें:</label><div class="btn-group btn-group-sm w-100" role="group"><input type="radio" class="btn-check" name="cardStyle" id="cs1" checked><label class="btn btn-outline-secondary" for="cs1">Style 1 (Formal)</label><input type="radio" class="btn-check" name="cardStyle" id="cs2"><label class="btn btn-outline-secondary" for="cs2">Style 2 (Bullet)</label><input type="radio" class="btn-check" name="cardStyle" id="cs3"><label class="btn btn-outline-secondary" for="cs3">Style 3 (Compact)</label><input type="radio" class="btn-check" name="cardStyle" id="cs4"><label class="btn btn-outline-secondary" for="cs4">Style 4 (Urgent)</label></div></div>
+      <textarea id="cardPreviewText" class="form-control bg-black text-light font-monospace small mt-2" rows="6" readonly></textarea>
+    </div><div class="modal-footer border-secondary justify-content-between"><button id="copyCardButton" class="btn btn-outline-success btn-sm"><i class="bi bi-clipboard me-1"></i> Copy Selected Text</button><button id="saveCallButton" class="btn btn-primary btn-sm"><i class="bi bi-check2-circle me-1"></i> Save Call Log</button></div>
+  </div></div></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    'use strict';
+    let currentUserRole = null;
+    let sessionToken = null;
+    let appData = null;
+    let absentSelectedSet = new Set();
+    let currentCallStudent = null;
+    let selectedChips = { reason: '', action: '', outcome: '', followUp: '' };
+    let callModal;
+
+    document.addEventListener('DOMContentLoaded', () => {
+      callModal = new bootstrap.Modal(document.getElementById('callModal'));
+      document.getElementById('attDate').value = new Date().toISOString().slice(0, 10);
+      document.getElementById('loginButton').addEventListener('click', handleLogin);
+      document.getElementById('accessCodeInput').addEventListener('keydown', event => { if (event.key === 'Enter') handleLogin(); });
+      document.getElementById('logoutButton').addEventListener('click', logout);
+      document.getElementById('attDate').addEventListener('change', fetchData);
+      document.getElementById('attSession').addEventListener('change', fetchData);
+      document.getElementById('saveAttendanceButton').addEventListener('click', submitAttendance);
+      document.getElementById('generateReportButton').addEventListener('click', generateReport);
+      document.getElementById('copyReportButton').addEventListener('click', () => copyText(document.getElementById('reportTextPreview').value));
+      document.getElementById('saveBalanceButton').addEventListener('click', saveHistoricalBalance);
+      document.getElementById('backupButton').addEventListener('click', triggerBackup);
+      document.getElementById('copyCardButton').addEventListener('click', () => copyText(document.getElementById('cardPreviewText').value));
+      document.getElementById('saveCallButton').addEventListener('click', saveCallLog);
+      document.querySelectorAll('#appTabs [data-tab]').forEach(button => button.addEventListener('click', () => switchTab(button)));
+      document.querySelectorAll('.chip').forEach(button => button.addEventListener('click', () => selectChip(button)));
+      document.querySelectorAll('input[name="cardStyle"]').forEach(input => input.addEventListener('change', updatePreviewCard));
+      document.getElementById('callExpectedReturn').addEventListener('input', updatePreviewCard);
+    });
+
+    function handleLogin() {
+      clearError();
+      const button = document.getElementById('loginButton');
+      button.disabled = true;
+      google.script.run.withSuccessHandler(result => {
+        button.disabled = false;
+        if (!result || !result.success) {
+          const error = document.getElementById('loginError');
+          error.textContent = 'अमान्य एक्सेस कोड!'; error.hidden = false; return;
+        }
+        currentUserRole = result.role;
+        sessionToken = result.token;
+        document.getElementById('loginScreen').hidden = true;
+        document.getElementById('mainApp').hidden = false;
+        document.getElementById('userRoleBadge').textContent = 'Role: ' + result.role.toUpperCase();
+        document.getElementById('todayLabel').textContent = 'तारीख: ' + new Date().toISOString().slice(0, 10);
+        const isAdmin = currentUserRole === 'admin';
+        document.getElementById('adminSettingsNav').hidden = !isAdmin;
+        document.getElementById('openingBalanceCard').hidden = !isAdmin;
+        document.getElementById('saveAttendanceButton').disabled = currentUserRole === 'view';
+        switchTab(document.querySelector('[data-tab="attTab"]'));
+        fetchData();
+      }).withFailureHandler(showFailure).verifyAccessCode(document.getElementById('accessCodeInput').value);
+    }
+
+    function logout() {
+      sessionToken = null; currentUserRole = null; appData = null;
+      document.getElementById('mainApp').hidden = true;
+      document.getElementById('loginScreen').hidden = false;
+      document.getElementById('accessCodeInput').value = '';
+      document.getElementById('loginError').hidden = true;
+    }
+
+    function switchTab(button) {
+      document.querySelectorAll('.tab-panel').forEach(panel => panel.hidden = true);
+      document.querySelectorAll('#appTabs .nav-link').forEach(item => item.classList.remove('active'));
+      const tabId = button.dataset.tab;
+      if (tabId === 'settingsTab' && currentUserRole !== 'admin') return;
+      document.getElementById(tabId).hidden = false;
+      button.classList.add('active');
+    }
+
+    function fetchData() {
+      if (!sessionToken) return;
+      google.script.run.withSuccessHandler(data => {
+        appData = data;
+        renderAttendancePills(); renderReminders(); renderInsights(); clearError();
+      }).withFailureHandler(showFailure).getAppData(sessionToken, document.getElementById('attDate').value, document.getElementById('attSession').value);
+    }
+
+    function renderAttendancePills() {
+      const box = document.getElementById('attendancePillsBox'); box.replaceChildren(); absentSelectedSet.clear();
+      const students = appData.students.filter(student => student.active && student.session === appData.selectedSession);
+      if (!students.length) { box.textContent = 'इस सेशन में कोई सक्रिय छात्र नहीं है।'; return; }
+      students.forEach(student => {
+        const pill = document.createElement('button');
+        pill.type = 'button'; pill.className = 'badge border border-secondary p-2 student-pill';
+        pill.textContent = student.name + ' (' + student.id.slice(-4) + ')';
+        const absent = student.attendanceStatus.toLowerCase() === 'absent';
+        pill.classList.add(absent ? 'absent' : 'bg-dark');
+        if (absent) absentSelectedSet.add(student.id);
+        pill.disabled = currentUserRole === 'view';
+        pill.addEventListener('click', () => {
+          if (absentSelectedSet.has(student.id)) { absentSelectedSet.delete(student.id); pill.classList.remove('absent'); pill.classList.add('bg-dark'); }
+          else { absentSelectedSet.add(student.id); pill.classList.add('absent'); pill.classList.remove('bg-dark'); }
+        });
+        box.appendChild(pill);
+      });
+    }
+
+    function submitAttendance() {
+      const date = document.getElementById('attDate').value;
+      const session = document.getElementById('attSession').value;
+      google.script.run.withSuccessHandler(() => { alert('अटेंडेंस सेव हो गई!'); fetchData(); })
+        .withFailureHandler(showFailure).saveBulkAttendance(sessionToken, date, session, Array.from(absentSelectedSet));
+    }
+
+    function renderReminders() {
+      const body = document.getElementById('remindersTableBody'); body.replaceChildren();
+      const alerts = appData.students.filter(student => student.active && student.consecutiveAbsences >= 2 && !student.isHiddenByReturn);
+      if (!alerts.length) { const row = body.insertRow(); const cell = row.insertCell(); cell.colSpan = 6; cell.className = 'text-center py-3 text-secondary'; cell.textContent = 'कोई 2+ लगातार अनुपस्थित छात्र नहीं हैं।'; return; }
+      alerts.forEach(student => {
+        const row = body.insertRow();
+        const identity = row.insertCell(); const name = document.createElement('span'); name.className = 'fw-bold'; name.textContent = student.name; identity.append(name, document.createElement('br')); const id = document.createElement('small'); id.className = 'text-secondary'; id.textContent = student.id; identity.appendChild(id);
+        const session = row.insertCell(); const badge = document.createElement('span'); badge.className = 'badge bg-secondary'; badge.textContent = student.session; session.appendChild(badge);
+        const phoneCell = row.insertCell(); if (student.phone) { const phone = document.createElement('a'); phone.href = 'tel:' + student.phone; phone.className = 'text-info'; phone.textContent = student.phone; phoneCell.appendChild(phone); }
+        const days = row.insertCell(); const daysBadge = document.createElement('span'); daysBadge.className = 'badge bg-danger'; daysBadge.textContent = student.consecutiveAbsences + ' क्लास'; days.appendChild(daysBadge);
+        const dateCell = row.insertCell(); const date = document.createElement('input'); date.type = 'date'; date.className = 'form-control form-control-sm'; date.style.width = '150px'; date.value = student.expectedReturn; date.disabled = currentUserRole === 'view'; date.addEventListener('change', () => saveReturnDate(student.id, date.value)); dateCell.appendChild(date);
+        const actionCell = row.insertCell(); const call = document.createElement('button'); call.type = 'button'; call.className = 'btn btn-outline-warning btn-sm'; call.textContent = '☎ Call / Log'; call.disabled = currentUserRole === 'view'; call.addEventListener('click', () => openCallModal(student.id)); actionCell.appendChild(call);
+      });
+    }
+
+    function saveReturnDate(studentId, value) {
+      google.script.run.withSuccessHandler(fetchData).withFailureHandler(showFailure).updateExpectedReturn(sessionToken, studentId, value);
+    }
+
+    function openCallModal(studentId) {
+      currentCallStudent = appData.students.find(student => student.id === studentId);
+      if (!currentCallStudent) return;
+      document.getElementById('callStuId').value = currentCallStudent.id;
+      document.getElementById('callStuName').textContent = currentCallStudent.name;
+      document.getElementById('callStuPhone').textContent = 'ID: ' + currentCallStudent.id + ' | Phone: ' + currentCallStudent.phone + ' | Session: ' + currentCallStudent.session;
+      document.getElementById('callExpectedReturn').value = currentCallStudent.expectedReturn || '';
+      selectedChips = { reason: '', action: '', outcome: '', followUp: '' };
+      document.querySelectorAll('.chip').forEach(chip => chip.classList.remove('active'));
+      document.getElementById('cs1').checked = true;
+      updatePreviewCard(); callModal.show();
+    }
+
+    function selectChip(button) {
+      const group = button.parentElement;
+      group.querySelectorAll('.chip').forEach(chip => chip.classList.remove('active'));
+      button.classList.add('active');
+      const key = { chipsReason: 'reason', chipsAction: 'action', chipsOutcome: 'outcome', chipsFollowUp: 'followUp' }[group.id];
+      selectedChips[key] = button.textContent;
+      updatePreviewCard();
+    }
+
+    function updatePreviewCard() {
+      if (!currentCallStudent) return;
+      const ret = document.getElementById('callExpectedReturn').value || 'N/A';
+      const c = selectedChips; let text;
+      if (document.getElementById('cs1').checked) text = '📞 *FEA Retention Follow-Up*\nStudent: ' + currentCallStudent.name + ' (' + currentCallStudent.id + ')\nReason: ' + (c.reason || 'N/A') + '\nAction: ' + (c.action || 'N/A') + '\nOutcome: ' + (c.outcome || 'N/A') + '\nNext Follow-up: ' + (c.followUp || 'N/A') + '\nExpected Return: ' + ret;
+      else if (document.getElementById('cs2').checked) text = '• *Call Update*: ' + currentCallStudent.name + ' [' + currentCallStudent.session + ']\n• Reason: ' + (c.reason || 'N/A') + '\n• Action: ' + (c.action || 'N/A') + '\n• Outcome: ' + (c.outcome || 'N/A') + '\n• Follow-up: ' + (c.followUp || 'N/A') + ' (' + ret + ')';
+      else if (document.getElementById('cs3').checked) text = '[' + currentCallStudent.name + ' - ' + currentCallStudent.session + '] ' + (c.reason || 'N/A') + ' → ' + (c.action || 'N/A') + ' → ' + (c.outcome || 'N/A') + ' → ' + (c.followUp || 'N/A') + ' (' + ret + ')';
+      else text = '🚨 *URGENT ATTENDANCE ALERT*\n' + currentCallStudent.name + ' (' + currentCallStudent.session + ') has ' + currentCallStudent.consecutiveAbsences + ' consecutive absences.\nReason: ' + (c.reason || 'N/A') + '\nAction: ' + (c.action || 'N/A') + '\nNext Follow-up: ' + (c.followUp || 'N/A') + '\nExpected Return: ' + ret;
+      document.getElementById('cardPreviewText').value = text;
+    }
+
+    function saveCallLog() {
+      const payload = { studentId: currentCallStudent.id, reason: selectedChips.reason, action: selectedChips.action, outcome: selectedChips.outcome, followUp: selectedChips.followUp, expectedReturn: document.getElementById('callExpectedReturn').value, cardStyle: document.querySelector('input[name="cardStyle"]:checked').id, copiedText: document.getElementById('cardPreviewText').value };
+      google.script.run.withSuccessHandler(() => { callModal.hide(); fetchData(); }).withFailureHandler(showFailure).saveCallRecord(sessionToken, payload);
+    }
+
+    function generateReport() {
+      const lessons = { S1: document.getElementById('lS1').value, S2: document.getElementById('lS2').value, S3: document.getElementById('lS3').value };
+      google.script.run.withSuccessHandler(result => { document.getElementById('reportResultBox').hidden = false; document.getElementById('reportTextPreview').value = result.reportText; })
+        .withFailureHandler(showFailure).generateLessonReport(sessionToken, lessons);
+    }
+
+    function renderInsights() {
+      const active = appData.students.filter(student => student.active);
+      document.getElementById('insightTotalStudents').textContent = active.length;
+      document.getElementById('insightTotalClasses').textContent = appData.totalClassesHeld;
+      const possible = active.length * appData.totalClassesHeld;
+      const absent = active.reduce((sum, student) => sum + student.totalAbsences, 0);
+      const rate = possible > 0 ? Math.max(0, Math.round((possible - absent) * 100 / possible)) : 100;
+      document.getElementById('insightAvgRate').textContent = rate + '%';
+      document.getElementById('histClasses').value = appData.totalClassesHeld;
+      const body = document.getElementById('historicalAbsencesBody'); body.replaceChildren();
+      active.forEach(student => {
+        const row = body.insertRow(); row.insertCell().textContent = student.name + ' (' + student.id + ')';
+        const cell = row.insertCell(); const input = document.createElement('input'); input.type = 'number'; input.min = '0'; input.step = '1'; input.className = 'form-control form-control-sm historical-absence'; input.dataset.studentId = student.id; input.value = student.historicalAbsences; cell.appendChild(input);
+      });
+    }
+
+    function saveHistoricalBalance() {
+      const absences = {}; document.querySelectorAll('.historical-absence').forEach(input => absences[input.dataset.studentId] = Number(input.value));
+      google.script.run.withSuccessHandler(() => { alert('ओपनिंग बैलेंस सेव हो गया!'); fetchData(); })
+        .withFailureHandler(showFailure).saveOpeningBalance(sessionToken, Number(document.getElementById('histClasses').value), absences);
+    }
+
+    function triggerBackup() {
+      const message = document.getElementById('backupMsg'); message.textContent = 'बैकअप बन रहा है...';
+      google.script.run.withSuccessHandler(result => { message.replaceChildren(); message.append('✅ बैकअप तैयार: '); const link = document.createElement('a'); link.href = result.url; link.target = '_blank'; link.rel = 'noopener'; link.className = 'text-info'; link.textContent = result.fileName; message.appendChild(link); })
+        .withFailureHandler(showFailure).makeBackupCopy(sessionToken);
+    }
+
+    function copyText(text) {
+      if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(() => alert('टेक्स्ट कॉपी हो गया!')).catch(() => fallbackCopy(text));
+      else fallbackCopy(text);
+    }
+    function fallbackCopy(text) { const area = document.createElement('textarea'); area.value = text; area.style.position = 'fixed'; area.style.opacity = '0'; document.body.appendChild(area); area.select(); try { document.execCommand('copy'); alert('टेक्स्ट कॉपी हो गया!'); } catch (error) { showError('कॉपी नहीं हो सका। टेक्स्ट चुनकर कॉपी करें।'); } area.remove(); }
+    function showFailure(error) { showError(error && error.message ? error.message : 'अनुरोध पूरा नहीं हो सका।'); if (String(error && error.message).toLowerCase().includes('session')) logout(); }
+    function showError(message) { const box = document.getElementById('appError'); box.textContent = message; box.hidden = false; }
+    function clearError() { document.getElementById('appError').hidden = true; }
+  </script>
+</body>
+</html>
